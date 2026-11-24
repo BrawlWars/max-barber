@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Barber Shop – Réservation</title>
+<style>
+:root{--bg:#faf8f5;--card:#fff;--tx:#1b1b1f;--mu:#6b6b76;--bd:#e4e0d8;--ac:#111;--ac-tx:#fff;--ok:#1f7a4d;--bad:#b3261e;--hi:#f1ece3;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#141416;--card:#1e1e22;--tx:#f2f1ee;--mu:#9b9ba6;--bd:#33333a;--ac:#f2f1ee;--ac-tx:#111;--ok:#5fcf97;--bad:#ff8a80;--hi:#2a2a30;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#141416;--card:#1e1e22;--tx:#f2f1ee;--mu:#9b9ba6;--bd:#33333a;--ac:#f2f1ee;--ac-tx:#111;--ok:#5fcf97;--bad:#ff8a80;--hi:#2a2a30;color-scheme:dark}
+*{box-sizing:border-box}html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.w{max-width:720px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:24px;margin:0}h2{font-size:17px;margin:22px 0 10px}
+.sub{color:var(--mu);margin:2px 0 16px;font-size:14px}
+.tabs{display:flex;gap:6px;margin:14px 0}
+.tab{flex:1;padding:10px;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:10px;font:inherit;cursor:pointer}
+.tab.on{background:var(--ac);color:var(--ac-tx);border-color:var(--ac)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.svc{flex:1 1 150px;text-align:left;padding:12px;border:1px solid var(--bd);border-radius:12px;background:var(--card);color:var(--tx);font:inherit;cursor:pointer}
+.svc.on{border:2px solid var(--ac);padding:11px}.svc small{display:block;color:var(--mu)}
+.days{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
+.day{flex:0 0 64px;text-align:center;padding:8px 4px;border:1px solid var(--bd);border-radius:12px;background:var(--card);color:var(--tx);font:inherit;cursor:pointer}
+.day b{display:block;font-size:20px}.day small{color:var(--mu);font-size:12px}
+.day.on{background:var(--ac);color:var(--ac-tx);border-color:var(--ac)}.day.on small{color:var(--ac-tx);opacity:.8}
+.day:disabled{opacity:.35;cursor:default}
+.slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px}
+.slot{padding:10px 0;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);font:inherit;cursor:pointer}
+.slot:hover{background:var(--hi)}.slot.t{opacity:.4;text-decoration:line-through;cursor:default}
+.slot.b{border-color:var(--ok);color:var(--ok)}
+input,select{font:inherit;padding:10px;border:1px solid var(--bd);border-radius:10px;background:var(--card);color:var(--tx);width:100%}
+label{font-size:13px;color:var(--mu);display:block;margin:8px 0 3px}
+.btn{padding:12px 16px;border:0;border-radius:10px;background:var(--ac);color:var(--ac-tx);font:inherit;font-weight:600;cursor:pointer}
+.btn.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}.btn.d{background:transparent;color:var(--bad);border:1px solid var(--bd);padding:6px 10px;font-size:13px}
+.wd{display:flex;gap:6px;flex-wrap:wrap}.wd label{margin:0;display:flex;gap:4px;align-items:center;color:var(--tx);font-size:14px;border:1px solid var(--bd);border-radius:8px;padding:6px 10px}
+.wd input{width:auto}
+.it{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--bd);font-size:14px}.it:last-child{border:0}
+.pill{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--hi)}.pill.ok{color:var(--ok)}
+.msg{padding:12px;border-radius:10px;background:var(--hi);margin:10px 0}
+.empty{color:var(--mu);padding:10px 0}
+</style>
+</head>
+<body>
+<div class="w">
+  <h1>✂️ Barber Shop</h1>
+  <p class="sub">Réservez votre créneau en quelques secondes.</p>
+  <div class="tabs" id="tabs"></div>
+  <div id="app"><div class="msg">Chargement…</div></div>
+  <p class="sub" style="text-align:center;margin-top:30px"><a href="#" onclick="unlock();return false" style="color:inherit">Espace barbier</a></p>
+</div>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script>
+
+const JOURS=["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
+let db=null,isAdmin=false,tab="client",slots=[],taken=new Set(),bookings=[];
+let selSvc=0,selDay=null,selSlot=null,done=null,gen={};
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pad=n=>String(n).padStart(2,"0");
+const ymd=d=>d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate());
+const pd=s=>{const[a,b,c]=s.split("-").map(Number);return new Date(a,b-1,c)};
+const longDate=s=>pd(s).toLocaleDateString("fr-FR",{weekday:"long",day:"numeric",month:"long"});
+const sid=s=>s.d+"_"+s.t.replace(":","");
+const isPast=s=>new Date(s.d+"T"+s.t)<new Date();
+
+const FIREBASE_CONFIG={ // ← colle ici TA config Firebase (voir README)
+  apiKey:"COLLE_ICI",authDomain:"COLLE_ICI",projectId:"COLLE_ICI",storageBucket:"COLLE_ICI",messagingSenderId:"COLLE_ICI",appId:"COLLE_ICI"
+};
+const ADMIN_PIN="1234"; // ← change ton code barbier
+function unlock(){const p=prompt("Code barbier ?");if(p===ADMIN_PIN){try{sessionStorage.setItem("pin",p)}catch(e){}location.reload()}else if(p!==null)alert("Code incorrect")}
+async function init(){
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    const fs=firebase.firestore();
+    db={collection:c=>({
+      onSnapshot:(n,e)=>fs.collection(c).onSnapshot(q=>n({docs:q.docs.map(d=>({id:d.id,data:()=>d.data()}))}),e),
+      doc:id=>({
+        get:async()=>{const d=await fs.collection(c).doc(id).get();return{exists:d.exists}},
+        set:x=>fs.collection(c).doc(id).set(x),
+        delete:()=>fs.collection(c).doc(id).delete()})})};
+  }catch(e){}
+  try{isAdmin=sessionStorage.getItem("pin")===ADMIN_PIN}catch(e){}
+  if(!db){$("#app").innerHTML='<div class="msg">Configuration Firebase manquante.</div>';return}
+  const err=()=>{};
+  db.collection("slots").onSnapshot(s=>{slots=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>sid(a).localeCompare(sid(b)));render()},err);
+  db.collection("taken").onSnapshot(s=>{taken=new Set(s.docs.map(d=>d.id));render()},err);
+  if(isAdmin)db.collection("bookings").onSnapshot(s=>{bookings=s.docs.map(d=>({id:d.id,...d.data()}));render()},err);
+  render();
+}
+
+function render(){
+  $("#tabs").innerHTML=isAdmin?`<button class="tab ${tab=="client"?"on":""}" onclick="setTab('client')">Prendre RDV</button><button class="tab ${tab=="admin"?"on":""}" onclick="setTab('admin')">Espace barbier</button>`:"";
+  const f=document.activeElement;if(f&&f.matches&&f.matches("input,select"))return; // ne pas casser la saisie
+  $("#app").innerHTML=(isAdmin&&tab=="admin")?adminView():clientView();
+}
+function setTab(t){tab=t;done=null;document.activeElement?.blur();render()}
+
+/* ---------- CLIENT ---------- */
+function freeSlots(){return slots.filter(s=>!isPast(s)&&!taken.has(s.id))}
+function clientView(){
+  if(done)return `<div class="card"><h2 style="margin-top:0">✅ Réservation confirmée</h2><p><b>Coupe</b><br>${esc(longDate(done.d))} à <b>${esc(done.t)}</b><br>Au nom de ${esc(done.name)}</p><button class="btn" onclick="done=null;selSlot=null;render()">Nouvelle réservation</button></div>`;
+  const free=freeSlots(),byDay={};free.forEach(s=>(byDay[s.d]??=[]).push(s));
+  const today=new Date(),days=[];for(let i=0;i<21;i++){const d=new Date(today.getFullYear(),today.getMonth(),today.getDate()+i);days.push(d)}
+  if(!selDay||!byDay[selDay])selDay=Object.keys(byDay).sort()[0]||null;
+  let h="";
+  h+=`<h2 style="margin-top:0">1. Choisissez un jour</h2><div class="days">`+days.map(d=>{const k=ymd(d),n=(byDay[k]||[]).length;return `<button class="day ${k==selDay?"on":""}" ${n?"":"disabled"} onclick="selDay='${k}';selSlot=null;render()"><small>${JOURS[d.getDay()]}</small><b>${d.getDate()}</b><small>${n?n+" créneau"+(n>1?"x":""):"complet"}</small></button>`}).join("")+`</div>`;
+  if(!selDay)return h+`<div class="empty">Aucun créneau disponible pour le moment. Revenez bientôt !</div>`;
+  h+=`<h2>2. Choisissez un horaire — ${esc(longDate(selDay))}</h2><div class="slots">`+byDay[selDay].map(s=>`<button class="slot ${selSlot==s.id?"b":""}" onclick="selSlot='${s.id}';render()">${esc(s.t)}</button>`).join("")+`</div>`;
+  if(selSlot){const s=slots.find(x=>x.id==selSlot);if(s)h+=`<div class="card" style="margin-top:16px"><b>Coupe</b> · ${esc(longDate(s.d))} à ${esc(s.t)}<label>Prénom</label><input id="cf" autocomplete="given-name"><label>Nom</label><input id="cn" autocomplete="family-name"><label>Téléphone</label><input id="cp" type="tel" autocomplete="tel"><label>Compte Instagram</label><input id="ci" placeholder="@pseudo" autocapitalize="none" autocorrect="off"><p id="cerr" style="color:var(--bad);margin:8px 0 0"></p><div class="row" style="margin-top:10px"><button class="btn" onclick="book()">Confirmer la réservation</button></div></div>`}
+  return h;
+}
+async function book(){
+  const first=$("#cf").value.trim(),name=$("#cn").value.trim(),phone=$("#cp").value.trim(),insta=$("#ci").value.trim(),err=$("#cerr");
+  if(!first||!name||!insta||phone.replace(/\D/g,"").length<8){err.textContent="Merci de remplir prénom, nom, un numéro valide et ton compte Instagram.";return}
+  const s=slots.find(x=>x.id==selSlot);if(!s)return;
+  try{
+    const t=await db.collection("taken").doc(s.id).get();
+    if(t.exists){err.textContent="Ce créneau vient d’être pris, choisissez-en un autre.";selSlot=null;return}
+    await db.collection("taken").doc(s.id).set({at:Date.now()});
+    await db.collection("bookings").doc(s.id).set({d:s.d,t:s.t,first,name,phone,insta,at:Date.now()});
+    done={d:s.d,t:s.t,name:first+" "+name};selSlot=null;render();
+  }catch(e){err.textContent="Réservation impossible, réessayez."}
+}
+
+/* ---------- BARBIER ---------- */
+function adminView(){
+  const t=ymd(new Date()),g=Object.assign({from:t,to:ymd(new Date(Date.now()+6*864e5)),start:"09:00",end:"18:00",dur:30,days:[1,2,3,4,5,6]},gen);
+  let h=`<div class="card"><h2 style="margin-top:0">Ouvrir des créneaux</h2>
+  <div class="row"><div style="flex:1 1 140px"><label>Du</label><input type="date" id="gf" value="${g.from}"></div><div style="flex:1 1 140px"><label>Au</label><input type="date" id="gt" value="${g.to}"></div></div>
+  <label>Jours travaillés</label><div class="wd">${[1,2,3,4,5,6,0].map(d=>`<label><input type="checkbox" class="gd" value="${d}" ${g.days.includes(d)?"checked":""}>${JOURS[d]}</label>`).join("")}</div>
+  <div class="row"><div style="flex:1 1 100px"><label>De</label><input type="time" id="gs" value="${g.start}"></div><div style="flex:1 1 100px"><label>À</label><input type="time" id="ge" value="${g.end}"></div><div style="flex:1 1 100px"><label>Durée</label><select id="gu">${[15,20,30,45,60,90].map(m=>`<option value="${m}" ${m==g.dur?"selected":""}>${m} min</option>`).join("")}</select></div></div>
+  <div class="row" style="margin-top:12px"><button class="btn" onclick="generate()">Ajouter les créneaux</button></div><p id="gmsg" class="sub"></p></div>`;
+  const up=bookings.filter(b=>!isPast(b)).sort((a,b)=>sid(a).localeCompare(sid(b)));
+  h+=`<h2>Rendez-vous à venir (${up.length})</h2><div class="card">`+(up.length?up.map(b=>`<div class="it"><div><b>${esc(longDate(b.d))} · ${esc(b.t)}</b><br>${esc(b.first)} ${esc(b.name)} · <a href="tel:${esc(b.phone)}" style="color:inherit">${esc(b.phone)}</a><br><small style="color:var(--mu)">Insta : ${esc(b.insta)}</small></div><button class="btn d" onclick="cancelB('${b.id}')">Annuler</button></div>`).join(""):`<div class="empty">Aucun rendez-vous pour l’instant.</div>`)+`</div>`;
+  const op=slots.filter(s=>!isPast(s)),byDay={};op.forEach(s=>(byDay[s.d]??=[]).push(s));
+  h+=`<h2>Créneaux ouverts (${op.length})</h2>`+(Object.keys(byDay).sort().map(d=>`<div class="card"><b>${esc(longDate(d))}</b><div class="slots" style="margin-top:8px">${byDay[d].map(s=>`<button class="slot ${taken.has(s.id)?"b":""}" title="${taken.has(s.id)?"Réservé":"Libre – cliquer pour supprimer"}" onclick="delSlot('${s.id}')">${esc(s.t)}${taken.has(s.id)?" ●":""}</button>`).join("")}</div></div>`).join("")||`<div class="empty">Aucun créneau ouvert.</div>`)+`<p class="sub">● = réservé. Cliquer sur un créneau le supprime (et annule la réservation éventuelle).</p>`;
+  return h;
+}
+async function generate(){
+  const from=$("#gf").value,to=$("#gt").value,s=$("#gs").value,e=$("#ge").value,dur=+$("#gu").value;
+  const days=[...document.querySelectorAll(".gd:checked")].map(x=>+x.value);gen={from,to,start:s,end:e,dur,days};
+  const msg=$("#gmsg");if(!from||!to||from>to||s>=e||!days.length){msg.textContent="Vérifiez les dates, jours et horaires.";return}
+  const toMin=x=>+x.slice(0,2)*60+ +x.slice(3),list=[];
+  for(let d=pd(from);ymd(d)<=to;d=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1)){
+    if(!days.includes(d.getDay()))continue;
+    for(let m=toMin(s);m+dur<=toMin(e);m+=dur){const o={d:ymd(d),t:pad(Math.floor(m/60))+":"+pad(m%60),m:dur};o.id=sid(o);if(!slots.some(x=>x.id==o.id))list.push(o)}
+  }
+  if(list.length>400){msg.textContent="Trop de créneaux d’un coup (max 400).";return}
+  msg.textContent="Ajout en cours…";
+  try{for(const o of list)await db.collection("slots").doc(o.id).set({d:o.d,t:o.t,m:o.m});msg.textContent=list.length+" créneau(x) ajouté(s).";}
+  catch(x){msg.textContent="Erreur : seul le barbier peut ouvrir des créneaux."}
+}
+async function delSlot(id){
+  if(taken.has(id)&&!confirm("Ce créneau est réservé. Le supprimer annulera le rendez-vous. Continuer ?"))return;
+  try{await db.collection("slots").doc(id).delete();await db.collection("taken").doc(id).delete();await db.collection("bookings").doc(id).delete()}catch(e){}
+}
+async function cancelB(id){
+  if(!confirm("Annuler ce rendez-vous ? Le créneau redeviendra libre."))return;
+  try{await db.collection("taken").doc(id).delete();await db.collection("bookings").doc(id).delete()}catch(e){}
+}
+init();
+</script>
+</body>
+</html>
